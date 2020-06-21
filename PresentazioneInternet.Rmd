@@ -1,0 +1,259 @@
+---
+title: "Utilizzo di internet nel mondo"
+author: "Thomas Verardo"
+output:
+  ioslides_presentation:
+    smaller: false
+    incremental: yes
+    css: 'scrollable_slides.css'
+editor_options: 
+  chunk_output_type: inline
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(cache = TRUE, message = FALSE, warning = FALSE)
+```
+
+# Introduzione
+
+## Contesto
+
+> Set di dati è costituito dall'elenco dei paesi in base al numero di utenti di Internet
+
+>* Database del 2018
+
+>* 6 colonne e 215 righe
+
+>* Nome del paese, popolazione, utenti utilizzatori, percentuale e classifica
+
+>* Fonte dati: Wikipedia
+
+# Codice
+
+## Importazione database
+
+```{r, layout="l-body-outset"}
+
+library(tidyverse)
+library(modelr)
+library(dplyr)
+library(ggplot2)
+library(stringr)
+library(rmarkdown)
+
+internet <- read.csv("C:/Users/tomve/Dropbox/Uniud/Fondamenti di Scienze/Progetto/List of Countries by number of Internet Users.csv", 
+                     encoding = "UTF-8")
+
+
+internet =
+  internet %>%
+    rename(
+      country = Country.or.Area,
+      users = Internet.Users,
+      population = Population,
+    )
+
+internet$Rank.1 <- NULL
+
+internet$Rank <- NULL
+
+internet$Percentage <- NULL
+
+#knitr::kable(internet, caption = "Tabella internet")
+head(internet, 10)
+
+```
+
+
+
+### Sistemazione della tabella {.css_class} 
+```{r}
+
+country <- data.frame(internet$country)
+
+internet <- internet %>% 
+  select(users, population) %>%
+  mutate_if(is.factor, ~parse_number(as.character(.))) 
+
+
+internet <- merge(country, internet, by="row.names", all.x=TRUE) %>%
+  rename(country = internet.country)
+
+internet$Row.names <- NULL
+
+internet <- internet %>% 
+  arrange(desc(population)) %>%
+  mutate(rankPop = rank(desc(population)))
+
+head(internet,10)
+
+```
+## Percentuale
+
+```{r}
+#Popolazione totale
+totPop <- sum(internet$population)
+
+#Popolazione che usa internet totale
+totUsers <- sum(internet$users)
+
+#Percentuale di persone che usano internet nel mondo
+totPerc <- (totUsers / totPop) * 100
+cat(totPerc,"%")
+
+```
+> Aggiunta delle colonne:
+
+>* percentale di utilizzo di internet
+>* classifica della percentuale
+
+```{r}
+
+internet <- internet %>%
+  mutate(percentage = (users/population)*100,
+         rankPerc = rank(desc(percentage))) %>%
+  arrange(rankPerc)
+  
+internet$percentage <-round(internet$percentage, digits = 2)
+
+internet$rankPerc <-round(internet$rankPerc, digits = 0)
+
+col_order <- c("rankPerc", "country", "users",
+               "population","rankPop", "percentage")
+
+internet <- internet[, col_order]
+
+
+head(internet,10)
+
+```
+## Migliori stati
+Stati con almento 1 milioni di abitanti
+
+```{r}
+internet %>%
+  filter(population > 1000000) %>%
+  head(10)
+
+```
+## Database continenti
+
+Database Continent:
+
+>* nome stato
+>* ID stato
+>* continente
+>* subcontinente
+
+```{r}
+
+continent <- read.csv("C:/Users/tomve/Dropbox/Uniud/Fondamenti di Scienze/Progetto/continents2.csv", encoding = "UTF-8")
+
+continent <- continent %>%
+  rename(country = X.U.FEFF.name,
+         id = alpha.3) %>%
+   select(country, region, sub.region, id)
+
+```
+
+ID stato nello standard ISO 3166-1 alpha-3 
+
+```{r}
+library(countrycode)
+
+internet <- internet %>%
+  mutate(id = countrycode(country, 
+                          origin = 'country.name', 
+                          destination = 'iso3c')
+         )
+
+internet_c <-left_join(internet, continent, by = "id") %>%
+  rename(country = country.x)
+
+internet_c$country.y <- NULL
+
+internet_c$id <- NULL
+
+
+internet_c %>% 
+  arrange(country) %>%
+  select(-users, -population, -rankPop, -rankPerc) %>%
+  head(10) 
+
+#Ascension
+internet_c <- internet_c[-c(137),] 
+  
+
+totPop <- sum(internet$population)
+
+continent <- internet_c %>%
+  group_by(region) %>%
+  summarise(
+    n = n(),
+   perc = round(sum(users)/sum(population), digits = 4)*100
+  ) 
+
+continent
+
+sub.continent <- internet_c %>%
+  group_by(sub.region, region) %>%
+  summarise(
+    n = n(),
+    perc = round(sum(users)/sum(population), digits = 4)*100,
+    )%>%
+  arrange(region)
+
+sub.continent
+
+```
+## Istogramma mondiale
+
+Percentule di utilizzatori di internet divisi per continenti
+
+```{r}
+
+ggplot(data=continent, 
+       aes(
+         x = reorder(region, -perc), 
+         y=perc, 
+         fill = region)) +
+  geom_bar(stat="identity") +
+  ylab("Percentuale utilizzo (%)") +
+  xlab("Continenti") +
+  scale_y_continuous(limits = c(0,100))
+  
+
+```
+
+## Europa
+
+Confronto con l'Italia
+
+```{r}
+#Italia
+internet %>%
+  filter(country == "Italy") 
+
+europe <- internet_c %>%
+  filter(region=="Europe") %>%
+  filter(population > 10000000) %>%
+  mutate(rankPerc = rank(desc(percentage))) %>%
+  select(-region, -rankPerc)
+
+europe
+
+```
+
+Grafico popolazione europea con almeno 10 milioni di abitanti
+```{r}
+ggplot(data=europe, aes(y = reorder(country, -percentage), x=percentage, fill = country)) +
+  geom_bar(stat="identity") +
+  ylab("Stati") +
+  xlab("Percentale utilizzo (%)")
+         
+```
+
+
+
+
+
